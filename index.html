@@ -292,6 +292,21 @@ body { display: flex; background: var(--main-bg); color: var(--text-primary); }
 .choice-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
 .choice-desc { font-size: 12px; color: var(--text-muted); }
 
+/* Editor de participantes permanentes (Configuración) */
+.perm-editor { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; background: var(--main-bg); }
+.perm-editor::-webkit-scrollbar { width: 4px; }
+.perm-editor::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+.perm-row { display: grid; grid-template-columns: 1fr 1.3fr auto auto auto; gap: 5px; align-items: center; margin-bottom: 5px; }
+.perm-row:last-child { margin-bottom: 0; }
+.perm-inp { padding: 6px 9px; border: 1px solid var(--border); border-radius: 5px; font-family: var(--font-ui); font-size: 13px; color: var(--text-primary); background: #fff; outline: none; width: 100%; transition: border .15s; }
+.perm-inp:focus { border-color: var(--accent); }
+.perm-btn { background: transparent; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); cursor: pointer; padding: 5px 7px; font-size: 12px; line-height: 1; transition: all .12s; }
+.perm-btn:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text-primary); background: #fff; }
+.perm-btn:disabled { opacity: .3; cursor: default; }
+.perm-btn-x:hover:not(:disabled) { color: #b91c1c; border-color: #fca5a5; background: #fee2e2; }
+.perm-empty { padding: 14px; text-align: center; font-size: 12px; color: var(--text-muted); font-style: italic; }
+.chip-ex { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .65; margin-left: 4px; border: 1px solid currentColor; border-radius: 3px; padding: 0 3px; }
+
 /* Context menu */
 .ctx-menu { position: fixed; background: var(--editor-bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-md); padding: 4px; z-index: 500; min-width: 160px; display: none; }
 .ctx-menu.open { display: block; }
@@ -880,7 +895,7 @@ select.cf-inp { background: #fff; cursor: pointer; }
 
 <!-- ── MODAL: SETTINGS ──────────────────────────────────── -->
 <div class="modal-overlay" id="modalSettings">
-  <div class="modal">
+  <div class="modal wide">
     <div class="modal-header">
       <span class="modal-title">Configuración de Cuaderno</span>
       <button class="modal-close" data-close="modalSettings">✕</button>
@@ -906,6 +921,16 @@ select.cf-inp { background: #fff; cursor: pointer; }
         <label>API Key de Anthropic</label>
         <input type="password" id="cfgAnthropicKey" placeholder="sk-ant-xxxxxxxxxxxx">
         <div class="field-hint">Usada para procesar fotos y archivos con Claude.</div>
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label>Participantes permanentes</label>
+        <div class="field-hint" style="margin:0 0 8px">Se usan en Comité Ejecutivo y Consejo de Facultad. El orden es el mismo de la tabla del Word oficial. Las actas ya guardadas conservan la nómina que tenían.</div>
+        <div id="permEditor" class="perm-editor"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <button class="btn sm" id="btnPermAdd">+ Agregar</button>
+          <span class="field-hint" id="permStatus" style="margin:0;flex:1"></span>
+          <button class="btn sm" id="btnPermReset">Restaurar lista original</button>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -1054,7 +1079,7 @@ select.cf-inp { background: #fff; cursor: pointer; }
 //  STATE
 // ══════════════════════════════════════════════════════════
 const S = {
-  settings: { githubToken: '', githubOwner: '', githubRepo: '', anthropicKey: '' },
+  settings: { githubToken: '', githubOwner: '', githubRepo: '', anthropicKey: '', perm: null },
   notebooks: [], currentNote: null, contentCache: {}, isDirty: false,
   currentView: 'edit', searchQuery: '', selectedFile: null, processChoice: 'claude', fidelityMode: 'fidelidad',
   ctxNotebook: null, renameTarget: null, confirmCallback: null,
@@ -1077,11 +1102,16 @@ const S = {
   cfDirty: false,
   cfGenFile: null,
   // Which editor the “Agregar invitado” modal targets ('ce' | 'cf')
-  invitadoTarget: 'ce'
+  invitadoTarget: 'ce',
+  // Copia de trabajo de la nómina mientras el modal de Configuración está abierto.
+  // Cancelar descarta; Guardar la promueve a S.settings.perm.
+  _permDraft: []
 };
 
-// ── PERM (CE permanent participants, ported from actas-fen) ──
-const PERM = [
+// ── PERM (participantes permanentes) ─────────────────────
+// PERM_DEFAULT es la semilla original del código: nunca se pierde y es lo que
+// restaura el botón "Restaurar lista original" en Configuración.
+const PERM_DEFAULT = [
   {n:'Juan Pablo Torres',     c:'Decano'},
   {n:'Mauricio Donoso',       c:'Director Escuela Administración de Empresas'},
   {n:'Andrés Tolosa',         c:'Director Relaciones Internacionales'},
@@ -1096,6 +1126,64 @@ const PERM = [
   {n:'María Pía Monreal',     c:'Directora del GOA – FEN'},
   {n:'Florencia Flen',        c:'Directora de Carrera International Business'}
 ];
+
+// PERM es la nómina VIGENTE. Es `let` porque loadSettings() la reasigna desde
+// la lista que el usuario guarda en Configuración. Las funciones que la leen
+// no cambiaron: siguen recibiendo un array de {n, c}.
+let PERM = PERM_DEFAULT.map(p => ({ ...p }));
+
+// Ruta del archivo de nómina en el repo de datos (privado).
+const PERM_PATH = 'config/participantes.json';
+
+// Deja una lista de participantes en forma canónica: [{n, c}] sin vacíos.
+// Devuelve null si no hay nada aprovechable, para que el llamador use el fallback.
+function normalizePerm(arr) {
+  if (!Array.isArray(arr)) return null;
+  const out = [];
+  const vistos = new Set();
+  for (const raw of arr) {
+    if (!raw) continue;
+    const n = String(raw.n || '').trim();
+    if (!n || vistos.has(n)) continue;
+    vistos.add(n);
+    out.push({ n, c: String(raw.c || '').trim() });
+  }
+  return out.length ? out : null;
+}
+
+// Cadena de respaldo: lista guardada → semilla del código.
+function applyPermFromSettings() {
+  PERM = normalizePerm(S.settings.perm) || PERM_DEFAULT.map(p => ({ ...p }));
+}
+
+// La nómina con la que se debe dibujar y exportar un acta concreta.
+// - Si el acta guardó su propia foto del consejo (`roster`), esa manda.
+// - Si no (actas anteriores a este cambio), se usa la nómina vigente MÁS
+//   cualquier nombre que aparezca en el archivo y ya no sea miembro, para que
+//   nadie desaparezca de un acta histórica.
+function rosterForActa(parsed) {
+  const base = (normalizePerm(parsed && parsed.roster) || PERM).map(p => ({ ...p }));
+  const vistos = new Set(base.map(p => p.n));
+  const extra = [];
+  const add = (nombre) => {
+    const n = String(nombre || '').trim();
+    if (!n || vistos.has(n)) return;
+    vistos.add(n);
+    extra.push({ n, c: '', ex: true });
+  };
+  ((parsed && parsed.presentes) || []).forEach(add);
+  ((parsed && parsed.ausentes) || []).forEach(add);
+  return base.concat(extra);
+}
+
+// Nómina vigente clonada, para estampar en un acta nueva.
+function rosterSnapshot() { return PERM.map(p => ({ n: p.n, c: p.c })); }
+
+// Serializa una nómina al mismo formato de lista que ya usan los invitados
+// ("Nombre (Cargo)"), que ambos parsers de YAML ya saben leer.
+function rosterToYamlList(roster) {
+  return (roster || []).map(p => (p.c ? `${p.n} (${p.c})` : p.n));
+}
 
 // ── TYPE / VIEW HELPERS (Phase 1 shell) ─────────────────
 const TYPE_META = {
@@ -1232,9 +1320,78 @@ function renderRecientes() {
 // ══════════════════════════════════════════════════════════
 //  SETTINGS
 // ══════════════════════════════════════════════════════════
-function loadSettings() { try { const s = localStorage.getItem('bitacora_settings'); if (s) S.settings = { ...S.settings, ...JSON.parse(s) }; } catch(e) {} }
+function loadSettings() { try { const s = localStorage.getItem('bitacora_settings'); if (s) S.settings = { ...S.settings, ...JSON.parse(s) }; } catch(e) {} applyPermFromSettings(); }
 function saveSettings() { localStorage.setItem('bitacora_settings', JSON.stringify(S.settings)); }
 function isConfigured() { return S.settings.githubToken && S.settings.githubOwner && S.settings.githubRepo; }
+
+// La nómina vive en el repo privado de datos; localStorage es solo caché, para
+// que los chips se dibujen al instante y la app siga usable si GitHub no responde.
+async function loadPermFromGitHub() {
+  if (!isConfigured()) return false;
+  try {
+    const f = await GH.getFile(PERM_PATH);
+    if (!f) return false;
+    const arr = normalizePerm(JSON.parse(f.content));
+    if (!arr) return false;
+    S.settings.perm = arr;
+    saveSettings();
+    applyPermFromSettings();
+    return true;
+  } catch(e) {
+    console.warn('No se pudo leer ' + PERM_PATH + ':', e.message);
+    return false;
+  }
+}
+async function savePermToGitHub(lista) {
+  if (!isConfigured()) return false;
+  const body = JSON.stringify(lista, null, 2) + '\n';
+  await GH.writeFile(PERM_PATH, body, null, 'Actualiza nómina de participantes permanentes');
+  return true;
+}
+
+// ── Editor de nómina en el modal de Configuración ────────
+function openPermEditor() {
+  S._permDraft = (normalizePerm(S.settings.perm) || PERM).map(p => ({ n: p.n, c: p.c }));
+  renderPermEditor();
+}
+function renderPermEditor() {
+  const wrap = document.getElementById('permEditor');
+  if (!wrap) return;
+  const list = S._permDraft || [];
+  if (!list.length) {
+    wrap.innerHTML = '<div class="perm-empty">Sin participantes. Agrega al menos uno o restaura la lista original.</div>';
+    setPermStatus('');
+    return;
+  }
+  wrap.innerHTML = list.map((p, i) => `<div class="perm-row" data-perm-idx="${i}">
+      <input type="text" class="perm-inp" data-perm-field="n" data-perm-idx="${i}" value="${esc(p.n || '')}" placeholder="Nombre completo">
+      <input type="text" class="perm-inp" data-perm-field="c" data-perm-idx="${i}" value="${esc(p.c || '')}" placeholder="Cargo">
+      <button class="perm-btn" data-perm-up="${i}" title="Subir"${i === 0 ? ' disabled' : ''}>↑</button>
+      <button class="perm-btn" data-perm-down="${i}" title="Bajar"${i === list.length - 1 ? ' disabled' : ''}>↓</button>
+      <button class="perm-btn perm-btn-x" data-perm-remove="${i}" title="Quitar">✕</button>
+    </div>`).join('');
+  setPermStatus(`${list.length} participante${list.length === 1 ? '' : 's'}`);
+}
+function setPermStatus(txt, isError) {
+  const el = document.getElementById('permStatus');
+  if (!el) return;
+  el.textContent = txt || '';
+  el.style.color = isError ? 'var(--danger)' : 'var(--text-muted)';
+}
+// Valida el borrador antes de promoverlo. Devuelve la lista limpia o null.
+function validatePermDraft() {
+  const raw = S._permDraft || [];
+  if (raw.some(p => !String(p.n || '').trim() && String(p.c || '').trim())) {
+    setPermStatus('Hay un cargo sin nombre. Completa el nombre o quita la fila.', true);
+    return null;
+  }
+  const nombres = raw.map(p => String(p.n || '').trim()).filter(Boolean);
+  const dup = nombres.find((n, i) => nombres.indexOf(n) !== i);
+  if (dup) { setPermStatus(`"${dup}" está repetido. Los nombres deben ser únicos.`, true); return null; }
+  const limpia = normalizePerm(raw);
+  if (!limpia) { setPermStatus('La nómina no puede quedar vacía.', true); return null; }
+  return limpia;
+}
 
 // ══════════════════════════════════════════════════════════
 //  GITHUB API
@@ -1625,12 +1782,23 @@ async function deleteAttachment(idx) {
 }
 function openAttachment(idx) {
   const att = S.attachments[idx]; if (!att) return;
-  if (S.settings.githubToken) {
-    fetch(`${GH.base()}/contents/${encodeURIPath(att.path)}`, { headers: GH.headers() }).then(r => r.json()).then(data => {
-      if (data.download_url) { window.open(data.download_url, '_blank'); }
-      else if (data.content) { const binary = atob(data.content.replace(/\n/g, '')); const bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); const blob = new Blob([bytes]); const blobUrl = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = blobUrl; a.download = att.name; a.click(); setTimeout(() => URL.revokeObjectURL(blobUrl), 5000); }
-    }).catch(() => window.open(`https://raw.githubusercontent.com/${S.settings.githubOwner}/${S.settings.githubRepo}/main/${att.path}`, '_blank'));
-  } else { window.open(`https://raw.githubusercontent.com/${S.settings.githubOwner}/${S.settings.githubRepo}/main/${att.path}`, '_blank'); }
+  // Con el repo de datos privado, raw.githubusercontent no sirve: hay que pasar
+  // siempre por la API autenticada. Si falla, se avisa en vez de abrir un 404.
+  if (!S.settings.githubToken) { toast('Configura tu token de GitHub para abrir adjuntos', 'error'); return; }
+  fetch(`${GH.base()}/contents/${encodeURIPath(att.path)}`, { headers: GH.headers() })
+    .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then(data => {
+      if (data.download_url) { window.open(data.download_url, '_blank'); return; }
+      if (data.content) {
+        const binary = atob(data.content.replace(/\n/g, ''));
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        dlBlob(new Blob([bytes]), att.name);
+        return;
+      }
+      throw new Error('GitHub no devolvió el contenido del archivo');
+    })
+    .catch(e => toast(`No se pudo abrir el adjunto: ${e.message}`, 'error'));
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1844,7 +2012,8 @@ function openNewCEActa() {
     path: null, originalPath: null, sha: null,
     title: '', date: todayISO(), hora: '09:00', lugar: '',
     presentes: new Set(),
-    invitados: []
+    invitados: [],
+    roster: rosterSnapshot()
   };
   S.ceDirty = false;
   showCEEditor();
@@ -1883,7 +2052,8 @@ async function openCEActa(path) {
       hora: parsed.hora_inicio || '',
       lugar: parsed.lugar || '',
       presentes: new Set(parsed.presentes || []),
-      invitados: parsed.invitados || []
+      invitados: parsed.invitados || [],
+      roster: rosterForActa(parsed)
     };
     S.ceDirty = false;
     showCEEditor();
@@ -1904,10 +2074,11 @@ function renderCEChips() {
   if (!wrap) return;
   if (!S.currentCE) { wrap.innerHTML = ''; return; }
   let html = '';
-  for (const p of PERM) {
+  for (const p of (S.currentCE.roster || PERM)) {
     const presente = S.currentCE.presentes.has(p.n);
     const cls = presente ? 'ce-chip ce-chip-presente' : 'ce-chip ce-chip-ausente';
-    html += `<div class="${cls}" data-ce-perm="${esc(p.n)}" title="${esc(p.c)}">${esc(p.n)}</div>`;
+    const exTag = p.ex ? '<span class="chip-ex" title="Ya no está en la nómina vigente">ex</span>' : '';
+    html += `<div class="${cls}" data-ce-perm="${esc(p.n)}" title="${esc(p.c || (p.ex ? 'Ya no está en la nómina vigente' : ''))}">${esc(p.n)}${exTag}</div>`;
   }
   for (let i = 0; i < S.currentCE.invitados.length; i++) {
     const inv = S.currentCE.invitados[i];
@@ -1940,10 +2111,12 @@ function buildCEFrontmatter(d) {
   lines.push(`fecha_es: ${yamlEscape(fmtFechaEs(d.date))}`);
   lines.push(`hora_inicio: ${d.hora ? yamlEscape(d.hora) : 'null'}`);
   lines.push(`lugar: ${d.lugar ? yamlEscape(d.lugar) : 'null'}`);
-  // presentes
-  const presArr = PERM.filter(p => d.presentes.has(p.n)).map(p => p.n);
+  // Nómina de ESTA acta (no la vigente): así el acta queda autocontenida.
+  const R = d.roster || PERM;
+  lines.push(`roster:${yamlList(rosterToYamlList(R))}`);
+  const presArr = R.filter(p => d.presentes.has(p.n)).map(p => p.n);
   lines.push(`presentes:${yamlList(presArr)}`);
-  const ausArr = PERM.filter(p => !d.presentes.has(p.n)).map(p => p.n);
+  const ausArr = R.filter(p => !d.presentes.has(p.n)).map(p => p.n);
   lines.push(`ausentes:${yamlList(ausArr)}`);
   // invitados
   if (d.invitados && d.invitados.length) {
@@ -2010,6 +2183,14 @@ function parseCEActaFile(content) {
     out.invitados = out.invitados.map(s => {
       const m2 = s.match(/^(.*?)\s*\((.+)\)\s*$/);
       return m2 ? { n: m2[1].trim(), c: m2[2].trim() } : { n: s, c: '' };
+    });
+  }
+  // Idem para la nómina estampada en el acta (mismo formato "Nombre (Cargo)")
+  if (Array.isArray(out.roster)) {
+    out.roster = out.roster.map(s => {
+      if (typeof s !== 'string') return s;
+      const m3 = s.match(/^(.*?)\s*\((.+)\)\s*$/);
+      return m3 ? { n: m3[1].trim(), c: m3[2].trim() } : { n: s, c: '' };
     });
   }
   return out;
@@ -2122,8 +2303,9 @@ function buildCEPrompt(notas, contexto) {
   const hora = document.getElementById('ceHora').value.trim();
   const lugar = document.getElementById('ceLugar').value.trim();
   const com = 'Comité Ejecutivo FEN';
-  const P = PERM.filter(p => S.currentCE.presentes.has(p.n)).map(p => p.n);
-  const Au = PERM.filter(p => !S.currentCE.presentes.has(p.n)).map(p => p.n);
+  const R = S.currentCE.roster || PERM;
+  const P = R.filter(p => S.currentCE.presentes.has(p.n)).map(p => p.n);
+  const Au = R.filter(p => !S.currentCE.presentes.has(p.n)).map(p => p.n);
   const invStr = S.currentCE.invitados.map(v => `${v.n}${v.c ? ' (' + v.c + ')' : ''}`).join(', ');
   const ctxLine = contexto ? `Contexto adicional del usuario: ${contexto}\n` : '';
   return `Redacta el acta formal de la sesión del ${fl}${hora ? ' (inicio: ' + hora + ')' : ''}${lugar ? ' en ' + lugar : ''}.
@@ -2216,11 +2398,12 @@ function applyCEActaToEditor(acta) {
   // Asistentes → mark presentes
   S.currentCE.presentes = new Set();
   for (const name of (acta.asistentes || [])) {
-    const exact = PERM.find(p => p.n === name);
+    const R = S.currentCE.roster || PERM;
+    const exact = R.find(p => p.n === name);
     if (exact) { S.currentCE.presentes.add(exact.n); continue; }
     // Case-insensitive fallback
     const lower = String(name).toLowerCase();
-    const fuzzy = PERM.find(p => p.n.toLowerCase() === lower);
+    const fuzzy = R.find(p => p.n.toLowerCase() === lower);
     if (fuzzy) S.currentCE.presentes.add(fuzzy.n);
   }
   // hora
@@ -2270,8 +2453,8 @@ function parseCEEditorToActa() {
     fecha: fmtFechaEs(S.currentCE.date),
     fecha_iso: S.currentCE.date,
     hora_inicio: S.currentCE.hora || null,
-    asistentes: PERM.filter(p => S.currentCE.presentes.has(p.n)).map(p => p.n),
-    ausentes: PERM.filter(p => !S.currentCE.presentes.has(p.n)).map(p => p.n),
+    asistentes: (S.currentCE.roster || PERM).filter(p => S.currentCE.presentes.has(p.n)).map(p => p.n),
+    ausentes: (S.currentCE.roster || PERM).filter(p => !S.currentCE.presentes.has(p.n)).map(p => p.n),
     temas: [],
     seguimiento_tareas: [],
     tareas_pendientes: [],
@@ -2800,7 +2983,8 @@ function newEmptyCF() {
     acuerdos: [],
     proximos_pasos: [],
     proxima_sesion: '',
-    agenda: []
+    agenda: [],
+    roster: rosterSnapshot()
   };
 }
 
@@ -2849,6 +3033,7 @@ async function openCFActa(path) {
     cf.proximos_pasos = parsed.proximos_pasos || [];
     cf.proxima_sesion = parsed.proxima_sesion || '';
     cf.agenda = parsed.agenda || [];
+    cf.roster = rosterForActa(parsed);
     S.currentCF = cf;
     S.cfDirty = false;
     showCFEditor();
@@ -2912,11 +3097,12 @@ function renderCFParticipantes() {
   const wrap = document.getElementById('cfParticipantes');
   if (!wrap || !S.currentCF) return;
   let html = '';
-  for (const p of PERM) {
+  for (const p of (S.currentCF.roster || PERM)) {
     const presente = S.currentCF.presentes.has(p.n);
     const cls = presente ? 'cf-chip cf-chip-presente' : 'cf-chip cf-chip-ausente';
     const mark = presente ? '<i class="ti ti-check cf-chip-mark"></i>' : '';
-    html += `<div class="${cls}" data-cf-perm="${esc(p.n)}" title="${esc(p.c)}">${mark}${esc(p.n)}</div>`;
+    const exTag = p.ex ? '<span class="chip-ex" title="Ya no está en la nómina vigente">ex</span>' : '';
+    html += `<div class="${cls}" data-cf-perm="${esc(p.n)}" title="${esc(p.c || (p.ex ? 'Ya no está en la nómina vigente' : ''))}">${mark}${esc(p.n)}${exTag}</div>`;
   }
   wrap.innerHTML = html;
 }
@@ -3062,11 +3248,15 @@ function buildCFFrontmatter(d) {
   lines.push(`hora_fin: ${d.hora_fin ? yamlEscapeMaybe(d.hora_fin) : 'null'}`);
   lines.push(`lugar: ${d.lugar ? yamlEscapeMaybe(d.lugar) : 'null'}`);
   lines.push(`objetivo: ${d.objetivo ? yamlEscapeMaybe(d.objetivo) : '""'}`);
-  // presentes
-  const presArr = PERM.filter(p => d.presentes.has(p.n)).map(p => p.n);
+  // Nómina de ESTA acta (no la vigente): así el acta queda autocontenida.
+  const R = d.roster || PERM;
+  const rosterLbl = rosterToYamlList(R);
+  if (rosterLbl.length) { lines.push('roster:'); rosterLbl.forEach(x => lines.push(`  - ${yamlEscapeMaybe(x)}`)); }
+  else lines.push('roster: []');
+  const presArr = R.filter(p => d.presentes.has(p.n)).map(p => p.n);
   if (presArr.length) { lines.push('presentes:'); presArr.forEach(n => lines.push(`  - ${yamlEscapeMaybe(n)}`)); }
   else lines.push('presentes: []');
-  const ausArr = PERM.filter(p => !d.presentes.has(p.n)).map(p => p.n);
+  const ausArr = R.filter(p => !d.presentes.has(p.n)).map(p => p.n);
   if (ausArr.length) { lines.push('ausentes:'); ausArr.forEach(n => lines.push(`  - ${yamlEscapeMaybe(n)}`)); }
   else lines.push('ausentes: []');
   // invitados
@@ -3222,6 +3412,14 @@ function parseCFActaFile(content) {
       return mm ? { n: mm[1].trim(), c: mm[2].trim() } : { n: s, c: '' };
     });
   }
+  // Idem para la nómina estampada en el acta
+  if (Array.isArray(out.roster)) {
+    out.roster = out.roster.map(s => {
+      if (typeof s !== 'string') return s;
+      const mr = s.match(/^(.*?)\s*\((.+)\)\s*$/);
+      return mr ? { n: mr[1].trim(), c: mr[2].trim() } : { n: s, c: '' };
+    });
+  }
   return out;
 
   function parseField(rawVal, _lines, _startIdx) {
@@ -3237,7 +3435,7 @@ function parseCFActaFile(content) {
 //  CF — BODY MARKDOWN render (human-readable; frontmatter is source of truth)
 // ══════════════════════════════════════════════════════════
 function buildCFBodyMd(d) {
-  const presArr = PERM.filter(p => d.presentes.has(p.n));
+  const R = d.roster || PERM;
   const lines = [];
   lines.push(`# Acta — ${CF_COMITE_NAME}`);
   lines.push('');
@@ -3248,7 +3446,7 @@ function buildCFBodyMd(d) {
 
   lines.push('## I. Participantes permanentes');
   lines.push('');
-  for (const p of PERM) {
+  for (const p of R) {
     const ok = d.presentes.has(p.n);
     lines.push(`- ${ok ? '✓' : '×'} ${p.n} — _${p.c}_`);
   }
@@ -3519,8 +3717,9 @@ function buildCFPrompt(notas, contexto) {
   const hI = document.getElementById('cfHoraI').value.trim();
   const hF = document.getElementById('cfHoraF').value.trim();
   const lug = document.getElementById('cfLugar').value.trim();
-  const P = PERM.filter(p => S.currentCF.presentes.has(p.n)).map(p => p.n);
-  const Au = PERM.filter(p => !S.currentCF.presentes.has(p.n)).map(p => p.n);
+  const R = S.currentCF.roster || PERM;
+  const P = R.filter(p => S.currentCF.presentes.has(p.n)).map(p => p.n);
+  const Au = R.filter(p => !S.currentCF.presentes.has(p.n)).map(p => p.n);
   const invStr = S.currentCF.invitados.map(v => `${v.n}${v.c ? ' (' + v.c + ')' : ''}`).join(', ');
   const ctxLine = contexto ? `Contexto adicional del usuario: ${contexto}\n` : '';
   return `Redacta el acta formal del Consejo de Facultad del ${fl}.
@@ -3661,9 +3860,11 @@ function exportCFWord() {
     proximos_pasos: cf.proximos_pasos || [],
     proxima_sesion: cf.proxima_sesion || null,
     // Internal fields consumed by fillTemplateXML
-    _presentes: PERM.filter(p => cf.presentes.has(p.n)).map(p => p.n),
+    // La tabla T1 del Word oficial se llena con la nómina DE ESTA ACTA,
+    // no con la vigente: reexportar un acta antigua no debe reescribir su asistencia.
+    _presentes: (cf.roster || PERM).filter(p => cf.presentes.has(p.n)).map(p => p.n),
     _invitados: (cf.invitados || []).slice(),
-    _perm: PERM
+    _perm: cf.roster || PERM
   };
   const safeName = sanitizeFilename(cf.title || `Acta_CF_${cf.date}`);
   d._baseFilename = safeName;
@@ -3692,8 +3893,8 @@ function exportCFPdf() {
   const cf = S.currentCF;
   const fechaEs = cf.date ? fmtFechaEs(cf.date) : '';
   const horaStr = [cf.hora_inicio, cf.hora_fin].filter(Boolean).join(' – ');
-  const presList = PERM.filter(p => cf.presentes.has(p.n));
-  const ausList = PERM.filter(p => !cf.presentes.has(p.n));
+  const presList = (cf.roster || PERM).filter(p => cf.presentes.has(p.n));
+  const ausList = (cf.roster || PERM).filter(p => !cf.presentes.has(p.n));
 
   function section(num, title, html) {
     return `<section class="cf-print-sec"><h2><span class="cf-print-num">${num}.</span> ${esc(title)}</h2>${html}</section>`;
@@ -3789,8 +3990,8 @@ function exportCePdf() {
   const hora = (document.getElementById('ceHora').value || '').trim();
   const lugar = (document.getElementById('ceLugar').value || '').trim();
   const fechaEs = date ? fmtFechaEs(date) : '';
-  const presArr = PERM.filter(p => S.currentCE.presentes.has(p.n)).map(p => p.n);
-  const ausArr = PERM.filter(p => !S.currentCE.presentes.has(p.n)).map(p => p.n);
+  const presArr = (S.currentCE.roster || PERM).filter(p => S.currentCE.presentes.has(p.n)).map(p => p.n);
+  const ausArr = (S.currentCE.roster || PERM).filter(p => !S.currentCE.presentes.has(p.n)).map(p => p.n);
   const invArr = (S.currentCE.invitados || []).map(i => i.c ? `${i.n} (${i.c})` : i.n);
   const body = ceQuill ? ceQuill.root.innerHTML : '';
   const subtitle = [fechaEs, hora, lugar].filter(Boolean).join(' · ');
@@ -3864,7 +4065,7 @@ function bindEvents() {
     else if (S.currentType === 'cf') { openNewCFActa(); }
     else { toast('Próximamente', ''); }
   };
-  document.getElementById('btnSettings').onclick = () => { document.getElementById('cfgGithubToken').value = S.settings.githubToken; document.getElementById('cfgGithubOwner').value = S.settings.githubOwner; document.getElementById('cfgGithubRepo').value = S.settings.githubRepo; document.getElementById('cfgAnthropicKey').value = S.settings.anthropicKey; openModal('modalSettings'); };
+  document.getElementById('btnSettings').onclick = () => { document.getElementById('cfgGithubToken').value = S.settings.githubToken; document.getElementById('cfgGithubOwner').value = S.settings.githubOwner; document.getElementById('cfgGithubRepo').value = S.settings.githubRepo; document.getElementById('cfgAnthropicKey').value = S.settings.anthropicKey; openPermEditor(); openModal('modalSettings'); };
   document.getElementById('btnSync').onclick = () => { if (!isConfigured()) { toast('Configura GitHub primero', 'error'); return; } loadTree(); };
   document.getElementById('searchInput').oninput = (e) => { S.searchQuery = e.target.value; renderSidebar(); };
 
@@ -4041,7 +4242,57 @@ function bindEvents() {
       const data = await res.json(); if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`); toast('✅ Conexión exitosa con Anthropic', 'success');
     } catch(e) { toast(e.message === 'Failed to fetch' ? '❌ No se puede alcanzar api.anthropic.com' : `❌ ${e.message}`, 'error'); }
   };
-  document.getElementById('btnSaveSettings').onclick = () => { S.settings.githubToken = document.getElementById('cfgGithubToken').value.trim(); S.settings.githubOwner = document.getElementById('cfgGithubOwner').value.trim(); S.settings.githubRepo = document.getElementById('cfgGithubRepo').value.trim(); S.settings.anthropicKey = document.getElementById('cfgAnthropicKey').value.trim(); saveSettings(); closeModal('modalSettings'); toast('Configuración guardada ✓', 'success'); if (isConfigured()) loadTree(); };
+  document.getElementById('btnSaveSettings').onclick = async () => {
+    const nomina = validatePermDraft();
+    if (!nomina) return;  // el mensaje ya quedó visible bajo la tabla; no cerramos el modal
+    S.settings.githubToken = document.getElementById('cfgGithubToken').value.trim();
+    S.settings.githubOwner = document.getElementById('cfgGithubOwner').value.trim();
+    S.settings.githubRepo = document.getElementById('cfgGithubRepo').value.trim();
+    S.settings.anthropicKey = document.getElementById('cfgAnthropicKey').value.trim();
+    S.settings.perm = nomina;
+    saveSettings();
+    applyPermFromSettings();
+    closeModal('modalSettings');
+    toast('Configuración guardada ✓', 'success');
+    // La nómina se replica al repo privado. Si falla, localStorage ya la tiene:
+    // se avisa pero no se pierde nada.
+    try { await savePermToGitHub(nomina); }
+    catch(e) { toast(`Nómina guardada localmente, pero no se pudo subir a GitHub: ${e.message}`, 'error'); }
+    // Refrescar los chips del acta abierta, si la hay.
+    if (S.currentCE) { S.currentCE.roster = rosterSnapshot(); renderCEChips(); }
+    if (S.currentCF) { S.currentCF.roster = rosterSnapshot(); renderCFParticipantes(); }
+    if (isConfigured()) loadTree();
+  };
+
+  // ── Editor de nómina ────────────────────────────────
+  document.getElementById('btnPermAdd').onclick = () => {
+    S._permDraft.push({ n: '', c: '' });
+    renderPermEditor();
+    setTimeout(() => {
+      const filas = document.querySelectorAll('#permEditor .perm-row');
+      filas[filas.length - 1]?.querySelector('[data-perm-field="n"]')?.focus();
+    }, 0);
+  };
+  document.getElementById('btnPermReset').onclick = () => {
+    if (!confirm('¿Restaurar la lista original de 13 participantes? Se descartan los cambios que no hayas guardado.')) return;
+    S._permDraft = PERM_DEFAULT.map(p => ({ n: p.n, c: p.c }));
+    renderPermEditor();
+  };
+  document.getElementById('permEditor').addEventListener('click', (e) => {
+    const up = e.target.closest('[data-perm-up]');
+    if (up) { const i = parseInt(up.dataset.permUp); if (i > 0) { const a = S._permDraft; [a[i-1], a[i]] = [a[i], a[i-1]]; renderPermEditor(); } return; }
+    const dn = e.target.closest('[data-perm-down]');
+    if (dn) { const i = parseInt(dn.dataset.permDown); const a = S._permDraft; if (i < a.length - 1) { [a[i+1], a[i]] = [a[i], a[i+1]]; renderPermEditor(); } return; }
+    const rm = e.target.closest('[data-perm-remove]');
+    if (rm) { const i = parseInt(rm.dataset.permRemove); S._permDraft.splice(i, 1); renderPermEditor(); return; }
+  });
+  document.getElementById('permEditor').addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.dataset.permField === undefined) return;
+    const i = parseInt(t.dataset.permIdx);
+    if (S._permDraft[i]) S._permDraft[i][t.dataset.permField] = t.value;
+    setPermStatus('');
+  });
 
   // New Note modal
   const uploadArea = document.getElementById('uploadArea'); const fileInput = document.getElementById('fileInput');
@@ -4338,6 +4589,7 @@ async function init() {
   loadSettings(); bindEvents(); document.getElementById('newNoteDate').value = todayISO();
   setActiveType('libres'); showHomeView();
   if (!isConfigured()) {
+    openPermEditor();  // el modal se abre solo en el primer arranque, no por el botón
     openModal('modalSettings'); toast('Configura tu cuenta GitHub para comenzar', '');
     renderSidebar();
     // Show empty CE/CF lists so users see something when they click the types
@@ -4347,6 +4599,7 @@ async function init() {
     if (cfWrap) cfWrap.innerHTML = `<div class="ce-new-item cf-new-item" id="cfNewItem"><i class="ti ti-plus"></i> <span>Nueva acta</span></div><div class="ce-empty">Configura GitHub para sincronizar.</div>`;
     return;
   }
+  await loadPermFromGitHub();
   await loadTree();
   renderRecientes();
 }
