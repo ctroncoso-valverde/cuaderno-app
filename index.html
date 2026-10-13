@@ -1006,9 +1006,9 @@ select.cf-inp { background: #fff; cursor: pointer; }
       </div>
       <div class="field">
         <label>Archivo adjunto (opcional)</label>
-        <div class="upload-area" id="genUploadArea"><div class="upload-icon">📎</div><div class="upload-text">Arrastra aquí o haz clic para seleccionar</div><div class="upload-hint">Foto del cuaderno, PDF o Word</div><div class="upload-types">.jpg .jpeg .png .heic .webp · .pdf · .docx</div></div>
+        <div class="upload-area" id="genUploadArea"><div class="upload-icon">📎</div><div class="upload-text">Arrastra aquí o haz clic para seleccionar</div><div class="upload-hint">Foto del cuaderno, PDF, Word o transcripción en texto</div><div class="upload-types">.jpg .jpeg .png .heic .webp · .pdf · .docx · .md · .txt</div></div>
         <div class="file-selected" id="genFileSelected" style="display:none"><span class="file-selected-icon" id="genFileIcon">📄</span><span class="file-selected-name" id="genFileName"></span><button class="file-selected-remove" id="genBtnRemoveFile">✕</button></div>
-        <input type="file" id="genFileInput" style="display:none" accept=".jpg,.jpeg,.png,.heic,.webp,.pdf,.docx">
+        <input type="file" id="genFileInput" style="display:none" accept=".jpg,.jpeg,.png,.heic,.webp,.pdf,.docx,.md,.txt">
       </div>
       <div class="field">
         <label>Contexto adicional (opcional)</label>
@@ -1038,9 +1038,9 @@ select.cf-inp { background: #fff; cursor: pointer; }
       </div>
       <div class="field">
         <label>Archivo adjunto (opcional)</label>
-        <div class="upload-area" id="genCfUploadArea"><div class="upload-icon">📎</div><div class="upload-text">Arrastra aquí o haz clic para seleccionar</div><div class="upload-hint">Foto del cuaderno, PDF o Word</div><div class="upload-types">.jpg .jpeg .png .heic .webp · .pdf · .docx</div></div>
+        <div class="upload-area" id="genCfUploadArea"><div class="upload-icon">📎</div><div class="upload-text">Arrastra aquí o haz clic para seleccionar</div><div class="upload-hint">Foto del cuaderno, PDF, Word o transcripción en texto</div><div class="upload-types">.jpg .jpeg .png .heic .webp · .pdf · .docx · .md · .txt</div></div>
         <div class="file-selected" id="genCfFileSelected" style="display:none"><span class="file-selected-icon" id="genCfFileIcon">📄</span><span class="file-selected-name" id="genCfFileName"></span><button class="file-selected-remove" id="genCfBtnRemoveFile">✕</button></div>
-        <input type="file" id="genCfFileInput" style="display:none" accept=".jpg,.jpeg,.png,.heic,.webp,.pdf,.docx">
+        <input type="file" id="genCfFileInput" style="display:none" accept=".jpg,.jpeg,.png,.heic,.webp,.pdf,.docx,.md,.txt">
       </div>
       <div class="field">
         <label>Contexto adicional (opcional)</label>
@@ -2285,14 +2285,57 @@ function openGenerateCEModal() {
   openModal('modalGenerateCE');
 }
 function setGenFile(file) {
-  if (!file) return; S.ceGenFile = file;
-  const icons = { 'image': '🖼️', 'application/pdf': '📄', 'docx': '📝' };
-  const ext = file.name.split('.').pop().toLowerCase();
-  const iconKey = file.type.startsWith('image') ? 'image' : file.type === 'application/pdf' ? 'application/pdf' : 'docx';
-  document.getElementById('genFileIcon').textContent = icons[iconKey] || '📄';
+  if (!file) return;
+  const tipo = classifyGenFile(file);
+  if (!tipo) { S.ceGenFile = null; document.getElementById('genFileInput').value = ''; showGenError('ce', unsupportedGenMsg(file)); return; }
+  hideGenError('ce');
+  S.ceGenFile = file;
+  const icons = { image: '🖼️', pdf: '📄', docx: '📝', text: '📋' };
+  document.getElementById('genFileIcon').textContent = icons[tipo] || '📄';
   document.getElementById('genFileName').textContent = file.name;
   document.getElementById('genFileSelected').style.display = 'flex';
   document.getElementById('genUploadArea').style.display = 'none';
+}
+
+// ── Archivos adjuntos en "Generar con Claude" (CE y CF) ─────────────
+// Regla: un archivo que la app no sabe leer se RECHAZA con error visible.
+// Nunca se descarta en silencio — eso hacía que Claude redactara un acta
+// "a partir del documento adjunto" sin haber recibido documento alguno.
+const GEN_TEXT_EXT = ['md', 'txt'];
+function classifyGenFile(file) {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if ((file.type || '').startsWith('image/') || ['jpg','jpeg','png','webp','heic'].includes(ext)) return 'image';
+  if (file.type === 'application/pdf' || ext === 'pdf') return 'pdf';
+  if (ext === 'docx') return 'docx';
+  if (GEN_TEXT_EXT.includes(ext)) return 'text';
+  return null;
+}
+function unsupportedGenMsg(file) {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  return `No se puede usar "${file.name}": el tipo .${ext} no es compatible. Usa imagen, PDF, Word (.docx), Markdown (.md) o texto (.txt).`;
+}
+async function buildGenContent(file, userPrompt) {
+  const tipo = classifyGenFile(file);
+  if (!tipo) throw new Error(unsupportedGenMsg(file));
+  if (tipo === 'text' || tipo === 'docx') {
+    const text = tipo === 'docx' ? await extractDocxText(file) : await readFileAsText(file);
+    if (!text || !text.trim()) throw new Error(`El archivo "${file.name}" está vacío o no se pudo leer.`);
+    return [{ type: 'text', text: `${userPrompt}\n\nContenido del documento:\n\n${text}` }];
+  }
+  const base64 = await fileToBase64(file);
+  if (tipo === 'pdf') return [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }, { type: 'text', text: userPrompt }];
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const imgMime = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+  return [{ type: 'image', source: { type: 'base64', media_type: imgMime, data: base64 } }, { type: 'text', text: userPrompt }];
+}
+function showGenError(kind, msg) {
+  const el = document.getElementById(kind === 'cf' ? 'genErrorCF' : 'genErrorCE');
+  if (el) { el.style.display = 'block'; el.textContent = `❌ ${msg}`; }
+  toast(msg, 'error');
+}
+function hideGenError(kind) {
+  const el = document.getElementById(kind === 'cf' ? 'genErrorCF' : 'genErrorCE');
+  if (el) { el.style.display = 'none'; el.textContent = ''; }
 }
 
 // Build prompt — port of buildPrompt0 (CE branch) from actas-fen, adapted to cuaderno inputs
@@ -2356,26 +2399,7 @@ async function generateCEDraft() {
     const sys = `Eres el secretario ejecutivo del Comité Ejecutivo FEN, FEN-UNAB, Chile. Redactas actas formales. Responde ÚNICAMENTE con JSON válido, sin markdown ni texto adicional.`;
     const userPrompt = buildCEPrompt(notas, contexto);
     let content;
-    if (file) {
-      const base64 = await fileToBase64(file);
-      const ext = file.name.split('.').pop().toLowerCase();
-      const isImage = (file.type || '').startsWith('image/') || ['jpg','jpeg','png','webp','heic'].includes(ext);
-      const isPDF = file.type === 'application/pdf' || ext === 'pdf';
-      const isDocx = ext === 'docx';
-      if (isImage) {
-        const imgMime = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
-        content = [{ type: 'image', source: { type: 'base64', media_type: imgMime, data: base64 } }, { type: 'text', text: userPrompt }];
-      } else if (isPDF) {
-        content = [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }, { type: 'text', text: userPrompt }];
-      } else if (isDocx) {
-        const text = await extractDocxText(file);
-        content = [{ type: 'text', text: `${userPrompt}\n\nContenido del documento:\n\n${text}` }];
-      } else {
-        content = userPrompt;
-      }
-    } else {
-      content = userPrompt;
-    }
+    content = file ? await buildGenContent(file, userPrompt) : userPrompt;
     const data = await callClaudeCE(sys, content);
     const raw = (data.content || []).find(b => b.type === 'text')?.text || '';
     const acta = parseActaJSON(raw);
@@ -3700,10 +3724,13 @@ function openGenerateCFModal() {
   openModal('modalGenerateCF');
 }
 function setCfGenFile(file) {
-  if (!file) return; S.cfGenFile = file;
-  const ext = (file.name.split('.').pop() || '').toLowerCase();
-  const icon = (file.type || '').startsWith('image') ? '🖼️' : ext === 'pdf' ? '📄' : '📝';
-  document.getElementById('genCfFileIcon').textContent = icon;
+  if (!file) return;
+  const tipo = classifyGenFile(file);
+  if (!tipo) { S.cfGenFile = null; document.getElementById('genCfFileInput').value = ''; showGenError('cf', unsupportedGenMsg(file)); return; }
+  hideGenError('cf');
+  S.cfGenFile = file;
+  const icons = { image: '🖼️', pdf: '📄', docx: '📝', text: '📋' };
+  document.getElementById('genCfFileIcon').textContent = icons[tipo] || '📄';
   document.getElementById('genCfFileName').textContent = file.name;
   document.getElementById('genCfFileSelected').style.display = 'flex';
   document.getElementById('genCfUploadArea').style.display = 'none';
@@ -3760,26 +3787,7 @@ async function generateCFDraft() {
     const sys = `Eres el secretario ejecutivo del Consejo de Facultad FEN, FEN-UNAB, Chile. Redactas actas formales. Responde ÚNICAMENTE con JSON válido, sin markdown ni texto adicional.`;
     const userPrompt = buildCFPrompt(notas, contexto);
     let content;
-    if (file) {
-      const base64 = await fileToBase64(file);
-      const ext = file.name.split('.').pop().toLowerCase();
-      const isImage = (file.type || '').startsWith('image/') || ['jpg','jpeg','png','webp','heic'].includes(ext);
-      const isPDF = file.type === 'application/pdf' || ext === 'pdf';
-      const isDocx = ext === 'docx';
-      if (isImage) {
-        const imgMime = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
-        content = [{ type: 'image', source: { type: 'base64', media_type: imgMime, data: base64 } }, { type: 'text', text: userPrompt }];
-      } else if (isPDF) {
-        content = [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }, { type: 'text', text: userPrompt }];
-      } else if (isDocx) {
-        const text = await extractDocxText(file);
-        content = [{ type: 'text', text: `${userPrompt}\n\nContenido del documento:\n\n${text}` }];
-      } else {
-        content = userPrompt;
-      }
-    } else {
-      content = userPrompt;
-    }
+    content = file ? await buildGenContent(file, userPrompt) : userPrompt;
     const data = await callClaudeCF(sys, content);
     const raw = (data.content || []).find(b => b.type === 'text')?.text || '';
     const acta = parseActaJSON(raw);
