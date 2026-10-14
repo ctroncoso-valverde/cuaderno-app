@@ -540,6 +540,22 @@ select.cf-inp { background: #fff; cursor: pointer; }
 
 .gen-modal-body .field textarea { min-height: 140px; }
 
+/* Verificar acta */
+.ver-fuente { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--main-bg); border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; margin-bottom: 12px; }
+.ver-fuente strong { font-weight: 600; }
+.ver-resumen { padding: 10px 14px; border-radius: var(--radius); background: #F5F4F0; font-size: 13px; line-height: 1.5; margin: 4px 0 12px; }
+.ver-conteo { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.ver-pill { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 12px; }
+.ver-alta { background: #fee2e2; color: #991b1b; }
+.ver-media { background: #fef3c7; color: #92400e; }
+.ver-baja { background: #e0f2fe; color: #075985; }
+.ver-item { border: 1px solid var(--border); border-left: 4px solid #d6d3d1; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px; line-height: 1.5; background: #fff; }
+.ver-item.g-alta { border-left-color: #dc2626; } .ver-item.g-media { border-left-color: #d97706; } .ver-item.g-baja { border-left-color: #0284c7; }
+.ver-item-head { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
+.ver-tipo { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); }
+.ver-cita { color: var(--text-secondary); font-style: italic; }
+.ver-sug { margin-top: 4px; color: #166534; }
+
 /* Responsive */
 @media (max-width: 768px) { #sidebar { width: 220px; min-width: 220px; } }
 @media print { #sidebar, .toolbar, .editor-footer, .ce-topbar, .ce-asistencia, .ce-meta, .ce-footer { display: none !important; } }
@@ -754,6 +770,7 @@ select.cf-inp { background: #fff; cursor: pointer; }
       </div>
       <div class="ce-topbar-right">
         <button class="ce-btn" id="btnCeGenerate"><i class="ti ti-sparkles"></i> Generar con Claude</button>
+        <button class="ce-btn" id="btnCeVerify" title="Contrastar el acta con su transcripción o apuntes"><i class="ti ti-clipboard-check"></i> Verificar acta</button>
         <button class="ce-btn primary" id="btnCeSave"><i class="ti ti-device-floppy"></i> Guardar en GitHub</button>
         <button class="ce-btn" id="btnCeExportWord"><i class="ti ti-file-download"></i> Exportar Word</button>
         <button class="ce-btn" id="btnCeExportPdf"><i class="ti ti-file-type-pdf"></i> Exportar PDF</button>
@@ -796,6 +813,7 @@ select.cf-inp { background: #fff; cursor: pointer; }
       </div>
       <div class="cf-topbar-right">
         <button class="cf-btn" id="btnCfGenerate"><i class="ti ti-sparkles"></i> Generar con Claude</button>
+        <button class="cf-btn" id="btnCfVerify" title="Contrastar el acta con su transcripción o apuntes"><i class="ti ti-clipboard-check"></i> Verificar acta</button>
         <button class="cf-btn primary" id="btnCfSave"><i class="ti ti-device-floppy"></i> Guardar en GitHub</button>
         <button class="cf-btn" id="btnCfExportWord"><i class="ti ti-file-download"></i> Word oficial</button>
         <button class="cf-btn" id="btnCfExportPdf"><i class="ti ti-file-type-pdf"></i> PDF</button>
@@ -1056,6 +1074,35 @@ select.cf-inp { background: #fff; cursor: pointer; }
 </div>
 
 
+<!-- ── MODAL: VERIFICAR ACTA ──────────────────────────────── -->
+<div class="modal-overlay" id="modalVerify">
+  <div class="modal wide">
+    <div class="modal-header">
+      <span class="modal-title">Verificar acta contra su fuente</span>
+      <button class="modal-close" data-close="modalVerify">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-hint" style="margin:0 0 12px">Claude contrasta el acta abierta con la transcripción o los apuntes y lista lo que no tiene respaldo: datos, fechas, nombres, votaciones, atribuciones y estados de compromisos. No modifica el acta.</div>
+      <div class="ver-fuente" id="verFuente"></div>
+      <div id="verFuenteEdit">
+        <div class="field">
+          <label>Fuente: transcripción o apuntes</label>
+          <div class="upload-area" id="verUploadArea"><div class="upload-icon">📋</div><div class="upload-text">Arrastra aquí la transcripción o haz clic</div><div class="upload-types">.md · .txt · .docx · .pdf · imagen</div></div>
+          <div class="file-selected" id="verFileSelected" style="display:none"><span class="file-selected-icon">📋</span><span class="file-selected-name" id="verFileName"></span><button class="file-selected-remove" id="verBtnRemoveFile">✕</button></div>
+          <input type="file" id="verFileInput" style="display:none" accept=".jpg,.jpeg,.png,.heic,.webp,.pdf,.docx,.md,.txt">
+        </div>
+        <div class="field"><label>…o pega el texto</label><textarea id="verTexto" rows="4" placeholder="Pega aquí la transcripción o los apuntes"></textarea></div>
+      </div>
+      <div id="verError" style="display:none; padding: 8px 12px; background: #fee2e2; color: #991b1b; border-radius: 6px; font-size: 13px; margin-bottom: 8px;"></div>
+      <div id="verResultados"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modalVerify">Cerrar</button>
+      <button class="btn primary" id="btnDoVerify">Verificar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── MODAL: AGREGAR INVITADO ───────────────────────────── -->
 <div class="modal-overlay" id="modalAddInvitado">
   <div class="modal narrow">
@@ -1103,6 +1150,9 @@ const S = {
   cfGenFile: null,
   // Which editor the “Agregar invitado” modal targets ('ce' | 'cf')
   invitadoTarget: 'ce',
+  // Fuente con la que se generó el último borrador (CE / CF), para verificarlo después.
+  genSource: { ce: null, cf: null },
+  verFile: null,
   // Copia de trabajo de la nómina mientras el modal de Configuración está abierto.
   // Cancelar descarta; Guardar la promueve a S.settings.perm.
   _permDraft: []
@@ -2338,6 +2388,143 @@ function hideGenError(kind) {
   if (el) { el.style.display = 'none'; el.textContent = ''; }
 }
 
+// ══════════════════════════════════════════════════════════
+//  VERIFICAR ACTA contra su fuente (CE y CF) — solo lectura
+// ══════════════════════════════════════════════════════════
+function verKind() { return S.currentType === 'cf' ? 'cf' : 'ce'; }
+function verActa() { return verKind() === 'cf' ? S.currentCF : S.currentCE; }
+function verFuenteActual() {
+  if (S.verFile) return { file: S.verFile, notas: '', nombre: S.verFile.name };
+  const t = (document.getElementById('verTexto').value || '').trim();
+  if (t) return { file: null, notas: t, nombre: 'texto pegado' };
+  const g = S.genSource[verKind()];
+  return g && g.acta === verActa() ? g : null; // solo si se generó para ESTA acta
+}
+function renderVerFuente() {
+  const el = document.getElementById('verFuente');
+  const f = verFuenteActual();
+  el.innerHTML = f
+    ? `<span>Fuente: <strong>${esc(f.nombre)}</strong></span>`
+    : `<span style="color:var(--text-muted)">No hay fuente todavía: adjunta la transcripción o pega los apuntes.</span>`;
+}
+function openVerifyModal() {
+  if (!verActa()) { toast('Abre un acta primero', 'error'); return; }
+  S.verFile = null;
+  document.getElementById('verTexto').value = '';
+  document.getElementById('verFileInput').value = '';
+  document.getElementById('verFileSelected').style.display = 'none';
+  document.getElementById('verUploadArea').style.display = 'block';
+  document.getElementById('verResultados').innerHTML = '';
+  const e = document.getElementById('verError'); e.style.display = 'none'; e.textContent = '';
+  renderVerFuente();
+  openModal('modalVerify');
+}
+function setVerFile(file) {
+  if (!file) return;
+  const e = document.getElementById('verError');
+  if (!classifyGenFile(file)) { S.verFile = null; document.getElementById('verFileInput').value = ''; e.style.display = 'block'; e.textContent = '❌ ' + unsupportedGenMsg(file); return; }
+  e.style.display = 'none';
+  S.verFile = file;
+  document.getElementById('verFileName').textContent = file.name;
+  document.getElementById('verFileSelected').style.display = 'flex';
+  document.getElementById('verUploadArea').style.display = 'none';
+  renderVerFuente();
+}
+// Texto legible del acta tal como está ahora en pantalla
+function verActaTexto() {
+  if (verKind() === 'cf') {
+    const cf = S.currentCF;
+    cf.title = document.getElementById('cfTitle').value.trim() || cf.title;
+    cf.date = document.getElementById('cfFecha').value || cf.date;
+    cf.hora_inicio = document.getElementById('cfHoraI').value.trim();
+    cf.hora_fin = document.getElementById('cfHoraF').value.trim();
+    cf.lugar = document.getElementById('cfLugar').value.trim();
+    cf.objetivo = document.getElementById('cfObjetivo').value.trim();
+    cf.proxima_sesion = document.getElementById('cfProximaSesion').value.trim();
+    syncCFSectionsToState();
+    return buildCFBodyMd(cf);
+  }
+  const ce = S.currentCE, R = ce.roster || PERM;
+  const pres = R.filter(p => ce.presentes.has(p.n)).map(p => p.n), aus = R.filter(p => !ce.presentes.has(p.n)).map(p => p.n);
+  return [`# ${document.getElementById('ceTitle').value.trim() || ce.title || 'Acta CE'}`,
+    `Fecha: ${fmtFechaEs(document.getElementById('ceFecha').value || ce.date)} · Hora: ${document.getElementById('ceHora').value.trim()} · Lugar: ${document.getElementById('ceLugar').value.trim()}`,
+    `Presentes: ${pres.join(', ') || '—'}`, `Ausentes: ${aus.join(', ') || '—'}`,
+    `Invitados: ${(ce.invitados || []).map(i => i.c ? `${i.n} (${i.c})` : i.n).join(', ') || '—'}`, '', getCEContentMd()].join('\n');
+}
+function verPrompt(actaTxt) {
+  const a = verActa(), R = (a.roster || PERM);
+  const nomina = R.map(p => p.c ? `${p.n} — ${p.c}` : p.n).join('\n');
+  const inv = (a.invitados || []).map(i => i.c ? `${i.n} — ${i.c}` : i.n).join('\n') || '(ninguno)';
+  return `Verifica el ACTA contra la FUENTE (la transcripción o apuntes que van como documento o texto adjunto al final). Revisa afirmación por afirmación y reporta solo lo que no tiene respaldo o difiere:
+- sin_respaldo: afirmaciones, acuerdos o datos del acta que no aparecen en la fuente.
+- cifra: números, porcentajes o montos que difieren de la fuente.
+- fecha: fechas o plazos del acta que la fuente no menciona.
+- atribucion: intervenciones atribuidas a una persona sin indicio en la fuente. Si la fuente no identifica hablantes, una atribución solo tiene respaldo si la fuente nombra a esa persona en ese contexto (por ejemplo, "aquí Roberto toma la palabra").
+- nombre: nombres de personas o unidades que no calzan con la nómina o con la fuente (por ejemplo, un nombre ausente de la nómina que podría ser una mala transcripción de alguien que sí está).
+- estado: compromisos cuyo estado la fuente indica (hecho, en proceso, etc.) y que el acta deja vacío o distinto.
+- votacion: aprobaciones "por unanimidad" u otras formas de votación que la fuente no registra.
+- omision: decisiones, compromisos, cifras o temas importantes de la fuente que el acta omite. Solo los relevantes.
+Reglas: cita textual y breve (máximo 30 palabras) del acta y de la fuente; si la fuente tiene marcas [HH:MM:SS], indica la del pasaje; no reportes lo que sí está respaldado; no inventes hallazgos. Gravedad: alta = afecta contenido oficial (acuerdos, votaciones, nombres, cifras, responsables); media = fechas, estados, atribuciones; baja = omisiones menores o matices.
+
+NÓMINA DE ESTA ACTA:
+${nomina}
+
+INVITADOS:
+${inv}
+
+ACTA:
+<<<
+${actaTxt}
+>>>
+
+Devuelve SOLO este JSON, sin backticks:
+{"resumen":"1 o 2 oraciones","hallazgos":[{"gravedad":"alta|media|baja","tipo":"sin_respaldo|cifra|fecha|atribucion|nombre|estado|votacion|omision","en_acta":"cita o null","en_fuente":"cita o null","marca_tiempo":"HH:MM:SS o null","explicacion":"…","sugerencia":"…"}]}`;
+}
+function renderVerResultados(r) {
+  const orden = { alta: 0, media: 1, baja: 2 };
+  const hs = (Array.isArray(r.hallazgos) ? r.hallazgos : []).slice().sort((x, y) => (orden[x.gravedad] ?? 3) - (orden[y.gravedad] ?? 3));
+  const n = g => hs.filter(h => h.gravedad === g).length;
+  const tipos = { sin_respaldo: 'Sin respaldo', cifra: 'Cifra', fecha: 'Fecha', atribucion: 'Atribución', nombre: 'Nombre', estado: 'Estado', votacion: 'Votación', omision: 'Omisión' };
+  const nulo = v => v === null || v === undefined || v === '' || v === 'null';
+  let html = `<div class="ver-resumen">${esc(r.resumen || '')}</div>`;
+  if (!hs.length) {
+    html += `<div class="ver-resumen">No se encontraron afirmaciones sin respaldo. Igual revisa el acta antes de firmarla: esta verificación no reemplaza tu lectura.</div>`;
+  } else {
+    html += `<div class="ver-conteo"><span class="ver-pill ver-alta">${n('alta')} alta</span><span class="ver-pill ver-media">${n('media')} media</span><span class="ver-pill ver-baja">${n('baja')} baja</span></div>`;
+    html += hs.map(h => `<div class="ver-item g-${esc(h.gravedad || '')}">
+      <div class="ver-item-head"><span class="ver-pill ver-${esc(h.gravedad || 'baja')}">${esc(h.gravedad || '')}</span><span class="ver-tipo">${esc(tipos[h.tipo] || h.tipo || '')}</span></div>
+      ${nulo(h.en_acta) ? '' : `<div><strong>En el acta:</strong> <span class="ver-cita">«${esc(h.en_acta)}»</span></div>`}
+      ${nulo(h.en_fuente) ? '' : `<div><strong>En la fuente${nulo(h.marca_tiempo) ? '' : ' [' + esc(h.marca_tiempo) + ']'}:</strong> <span class="ver-cita">«${esc(h.en_fuente)}»</span></div>`}
+      <div>${esc(h.explicacion || '')}</div>
+      ${nulo(h.sugerencia) ? '' : `<div class="ver-sug">→ ${esc(h.sugerencia)}</div>`}
+    </div>`).join('');
+  }
+  document.getElementById('verResultados').innerHTML = html;
+}
+async function doVerify() {
+  if (!S.settings.anthropicKey) { toast('Configura tu API key de Anthropic primero', 'error'); return; }
+  const fuente = verFuenteActual();
+  const e = document.getElementById('verError');
+  if (!fuente || (!fuente.file && !fuente.notas)) { e.style.display = 'block'; e.textContent = '❌ Falta la fuente: adjunta la transcripción o pega los apuntes.'; return; }
+  e.style.display = 'none';
+  const btn = document.getElementById('btnDoVerify'); const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Verificando…';
+  showLoading('Verificando el acta contra la fuente…');
+  try {
+    const prompt = verPrompt(verActaTexto());
+    const content = fuente.file ? await buildGenContent(fuente.file, prompt) : [{ type: 'text', text: `${prompt}\n\nFUENTE:\n\n${fuente.notas}` }];
+    const sys = 'Eres un verificador riguroso de actas institucionales de la FEN-UNAB. Contrastas un acta con su fuente y reportas solo lo que puedes sustentar con citas. Responde ÚNICAMENTE con JSON válido.';
+    const data = await callClaudeCF(sys, content);
+    const raw = (data.content || []).find(b => b.type === 'text')?.text || '';
+    renderVerResultados(parseActaJSON(raw));
+  } catch (err) {
+    e.style.display = 'block'; e.textContent = `❌ ${err.message}`;
+    toast(`Error: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = orig; hideLoading();
+  }
+}
+
 // Build prompt — port of buildPrompt0 (CE branch) from actas-fen, adapted to cuaderno inputs
 function buildCEPrompt(notas, contexto) {
   if (!S.currentCE) return '';
@@ -2404,6 +2591,7 @@ async function generateCEDraft() {
     const raw = (data.content || []).find(b => b.type === 'text')?.text || '';
     const acta = parseActaJSON(raw);
     applyCEActaToEditor(acta);
+    S.genSource.ce = { file: file || null, notas: notas || '', nombre: file ? file.name : 'apuntes pegados', acta: S.currentCE };
     closeModal('modalGenerateCE');
     toast('Borrador generado ✓', 'success');
   } catch(e) {
@@ -3792,6 +3980,7 @@ async function generateCFDraft() {
     const raw = (data.content || []).find(b => b.type === 'text')?.text || '';
     const acta = parseActaJSON(raw);
     applyCFActaToEditor(acta);
+    S.genSource.cf = { file: file || null, notas: notas || '', nombre: file ? file.name : 'apuntes pegados', acta: S.currentCF };
     closeModal('modalGenerateCF');
     toast('Borrador CF generado ✓', 'success');
   } catch(e) {
@@ -4384,6 +4573,17 @@ function bindEvents() {
 
   // CE top-bar buttons
   document.getElementById('btnCeGenerate').onclick = openGenerateCEModal;
+  document.getElementById('btnCeVerify').onclick = openVerifyModal;
+  document.getElementById('btnCfVerify').onclick = openVerifyModal;
+  const verUp = document.getElementById('verUploadArea'), verFi = document.getElementById('verFileInput');
+  verUp.onclick = (ev) => { ev.stopPropagation(); verFi.click(); };
+  verUp.ondragover = (ev) => { ev.preventDefault(); verUp.classList.add('drag'); };
+  verUp.ondragleave = () => verUp.classList.remove('drag');
+  verUp.ondrop = (ev) => { ev.preventDefault(); verUp.classList.remove('drag'); if (ev.dataTransfer.files[0]) setVerFile(ev.dataTransfer.files[0]); };
+  verFi.onchange = (ev) => { if (ev.target.files[0]) setVerFile(ev.target.files[0]); };
+  document.getElementById('verBtnRemoveFile').onclick = () => { S.verFile = null; verFi.value = ''; document.getElementById('verFileSelected').style.display = 'none'; verUp.style.display = 'block'; renderVerFuente(); };
+  document.getElementById('verTexto').addEventListener('input', renderVerFuente);
+  document.getElementById('btnDoVerify').onclick = doVerify;
   document.getElementById('btnCeSave').onclick = saveCurrentCE;
   document.getElementById('btnCeExportWord').onclick = exportCEWord;
   document.getElementById('btnCeExportPdf').onclick = exportCePdf;
