@@ -1667,6 +1667,7 @@ ${context ? `\nEl usuario aporta este contexto — úsalo como glosario priorita
 PASADA 2 — LECTURA
 - Resolver por contexto es tu conducta por defecto. Si una palabra es ambigua en trazo pero solo una opción tiene sentido en la frase y el dominio, escribe esa opción sin marcarla.
 - [?] es el último recurso, no el primero. Úsalo solo si tras considerar contexto, dominio y sintaxis sigue sin ser determinable.
+- EXCEPCIÓN — dos lecturas que cambian el sentido: si el trazo admite dos palabras que tienen sentido en la frase pero dicen cosas distintas (ej. contactar/contratar, preocuparía/preocupará, sea/será, envío/envió), NO elijas por plausibilidad. Escribe la que mejor calza con el trazo y la otra entre corchetes: "contactar [¿o contratar?]". Que una palabra aparezca en otra parte de la hoja NO prueba que se repita aquí; decide por el trazo de esta línea.
 - Nunca dejes un fragmento que no signifique nada en español. Si al releer lees algo incoherente, vuelve a mirar esa zona de la imagen: casi siempre es una mala lectura tuya, no una incoherencia del autor.
 - Límite a la reconstrucción por contexto: el contexto sirve para ELEGIR entre lecturas que el trazo admite, no para FABRICAR una frase que suene bien. Si tu lectura no se sostiene en los trazos que ves, no la escribas.
 - Jerarquía de preferencia cuando dudas: (1) lectura coherente y compatible con el trazo; (2) lectura literal aunque suene rara; (3) la palabra seguida de [?]. Una frase inventada que suena plausible es el peor resultado posible, peor que un [?], porque el autor no puede detectarla al releer.
@@ -1684,7 +1685,9 @@ JERARQUÍA — cómo decidir qué es punto y qué es subpunto
        → respuesta C
   entonces son DOS puntos de nivel 1 (Fulano, Mengano), el primero con dos subpuntos y el segundo con uno. NUNCA cinco puntos planos.
 - Un bullet suelto sin nada colgando lleva "subpuntos": [].
-- Si una flecha abre una línea que no cuelga de un ítem numerado, es un punto de nivel 1 normal.
+- Una línea que empieza con → o ⇒ justo después de un bullet (numerado o no) es SUBPUNTO de ese bullet. Lo mismo una continuación del tipo "Evidencia → fotos?" escrita bajo un punto: pertenece a ese punto.
+- Una llave (︸, { o una curva) que abarca varias líneas las agrupa: lo que va bajo la llave es desarrollo de lo que la llave abarca, y todo eso va junto como un punto con sus subpuntos, en el orden del autor.
+- Un asterisco (*) al inicio marca un punto que el autor destacó: escríbelo en negrita, sin cambiar su texto.
 - Tachones y correcciones: usa la versión final que dejó el autor.
 - Subrayado o doble subrayado indica énfasis del autor: puedes marcarlo en negrita.
 - No traduzcas. Si mezcla idiomas, cada parte queda en el suyo.
@@ -1710,14 +1713,27 @@ Estas son abreviaturas y hábitos recurrentes de quien escribe estos apuntes. So
 
 PASADA 3 — VERIFICACIÓN
 Relee tu propia transcripción antes de emitirla. Cada frase debe ser gramaticalmente válida y semánticamente coherente con su contexto. Cualquier fragmento que falle esa prueba, vuelve a leerlo de la imagen.
+Luego compara línea por línea con el original y corrige antes de emitir:
+- ¿Cada línea del original está en el cuerpo (no solo en pendientes)?
+- ¿Cada verbo conserva el modo y el tiempo que escribió el autor?
+- ¿Cada flecha, llave y asterisco quedó como relación (subpunto, agrupación, negrita)?
+- ¿Reemplazaste alguna palabra por otra que te pareció más lógica? Si el trazo no la respalda, vuelve a la del autor o márcala "palabra [¿o alternativa?]".
+
+SENTIDO — reglas que valen siempre, en cualquier modo
+- Conserva el modo y el tiempo de cada verbo del autor: condicional (-ría, podría), subjuntivo (sea, entrevisten), futuro, presente. Nunca conviertas un condicional o una sugerencia en un hecho o en una decisión.
+- Conserva quién dice o propone qué: "X sugiere", "Y explica", "Z propone" se mantienen; no los conviertas en acuerdos del grupo.
+- Conserva signos de duda y énfasis del autor: "?" sigue siendo pregunta, "!" o "?!" se mantienen.
+- "Yo", "envío", "me encargo" (primera persona) es el autor de la nota: escríbelo como "Cristián" (ej. "Yo envío email" → "Cristián envía el email").
+- La barra "/" entre ideas separa elementos: tradúcela a "y" o "o", o déjala; nunca a "sobre", "de" o algo que convierta dos ideas en una.
 
 ${modo === 'fidelidad' ? `MODO: FIDELIDAD 1:1 — el input ya es un apunte condensado
 - Un punto de salida por cada punto del original. Si el autor escribió 12 bullets, la salida tiene 12 puntos.
 - PROHIBIDO fusionar dos puntos en uno.
 - PROHIBIDO omitir puntos que te parezcan menores, obvios o redundantes.
 - PROHIBIDO resumir, sintetizar o "dejarlo más limpio".
-- Lo único permitido: expandir abreviaturas, completar la sintaxis mínima para que la frase se lea bien, y agregar jerarquía visual (secciones y subpuntos) que ya estaba implícita en el original.
-- Si un punto del original es un fragmento sin verbo, complétalo lo mínimo para que se entienda, sin agregar información que no esté.` : `MODO: RESUMIR — el input es extenso y admite condensación
+- PROHIBIDO reemplazar palabras del autor por sinónimos o por palabras "más claras": usa sus palabras, en su orden.
+- Lo único permitido: expandir abreviaturas (c/ → con, info → información), agregar artículos o preposiciones imprescindibles, y agregar la jerarquía visual (subpuntos) que el autor marcó con flechas, llaves o sangría.
+- Si un punto del original es un fragmento sin verbo, déjalo como fragmento o agrégale lo mínimo; no agregues palabras que precisen, estrechen o amplíen lo que el autor escribió.` : `MODO: RESUMIR — el input es extenso y admite condensación
 - Agrupa por tema y condensa. La salida puede tener menos puntos que el input.
 - Preserva todo dato accionable: acuerdos, compromisos, responsables, plazos, cifras, nombres.
 - Descarta muletillas, saludos, repeticiones y ruido conversacional.`}
@@ -1734,10 +1750,11 @@ FORMATO DE SALIDA — responde ÚNICAMENTE con este JSON, sin backticks ni texto
       ]
     }
   ],
-  "pendientes": ["Tarea o compromiso detectado, si los hay"],
+  "pendientes": ["Compromiso explícito, con su responsable si el autor lo escribió"],
   "cierre": "Nota de cierre, próxima reunión o deadline, o null"
 }
 ${title ? `\nTítulo sugerido por el usuario: ${title}` : ''}
+Reglas de "pendientes": es un índice adicional, no un lugar donde mover contenido; cada pendiente debe estar también en el cuerpo con las palabras del autor. Solo entran compromisos explícitos (alguien hará algo, o una acción escrita en infinitivo o imperativo como tarea). Una sugerencia, propuesta, condicional o pregunta NO es pendiente. Si el autor escribió el responsable, ponlo al inicio ("Cristián: enviar email…"); si no lo escribió, no lo inventes.
 Reglas del JSON: sin emojis en ningún campo. "subpuntos" vacío es []. "pendientes" vacío es []. "meta" y "cierre" pueden ser null. Un punto sin anidación lleva "subpuntos": [].`;
     if (isImage) {
       const imgMime = mime || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
