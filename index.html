@@ -1654,7 +1654,7 @@ async function processFileWithClaude(file, context, title) {
     const isPDF = mime === 'application/pdf' || ext === 'pdf'; const isDocx = ext === 'docx';
     let msgContent = [];
     const modo = S.fidelityMode || 'fidelidad';
-    const prompt = `Transformas apuntes y archivos en notas de trabajo estructuradas.
+    const prompt0 = `Transformas apuntes y archivos en notas de trabajo estructuradas.
 
 PASADA 1 — RECONOCIMIENTO (mental, no lo escribas)
 Antes de transcribir, recorre el documento completo e identifica:
@@ -1674,7 +1674,8 @@ PASADA 2 — LECTURA
 - Abreviaturas manuscritas frecuentes: c/=con, s/=sin, x=por, q o qe=que, pq=porque, pta o pgta=pregunta, ppto=presupuesto, tb o tmb=también, dp o dsp=después, dif=diferente, imp=importante, nec=necesario, sig=siguiente, ej=ejemplo.
 - Símbolos: ⚠ o "ojo" es alerta; ✓ o x en margen es estado.
 
-JERARQUÍA — cómo decidir qué es punto y qué es subpunto
+${modo === 'fidelidad' ? `MARCAS DE LÍNEA — en este modo la jerarquía la arma la aplicación con la marca de cada línea (ver FORMATO DE SALIDA). Tú no anidas nada: solo reportas la marca exacta con que empieza cada línea en la hoja.
+` : `JERARQUÍA — cómo decidir qué es punto y qué es subpunto
 - Un ítem numerado (① ② ③, 1) 2), o similar) es SIEMPRE un punto de nivel 1.
 - Las líneas que le siguen empezando con → o ⇒ o con sangría mayor son SUS SUBPUNTOS. Van en el array "subpuntos" de ese punto, no como puntos hermanos.
 - Ejemplo de lo que debes producir: si el original dice
@@ -1689,7 +1690,7 @@ JERARQUÍA — cómo decidir qué es punto y qué es subpunto
 - Una línea que empieza con → o ⇒ justo después de un bullet (numerado o no) es SUBPUNTO de ese bullet. Lo mismo una continuación del tipo "Evidencia → fotos?" escrita bajo un punto: pertenece a ese punto.
 - Una llave (︸, { o una curva) que abarca varias líneas las agrupa: lo que va bajo la llave es desarrollo de lo que la llave abarca, y todo eso va junto como un punto con sus subpuntos, en el orden del autor.
 - Un asterisco (*) al inicio marca un punto que el autor destacó: escríbelo en negrita, sin cambiar su texto.
-- Tachones y correcciones: usa la versión final que dejó el autor.
+`}- Tachones y correcciones: usa la versión final que dejó el autor.
 - Subrayado o doble subrayado indica énfasis del autor: puedes marcarlo en negrita.
 - No traduzcas. Si mezcla idiomas, cada parte queda en el suyo.
 - Preserva el encabezado que ESCRIBIÓ EL AUTOR a mano (título, fecha).
@@ -1717,9 +1718,9 @@ PASADA 3 — VERIFICACIÓN
 Relee tu propia transcripción antes de emitirla. Cada frase debe ser gramaticalmente válida y semánticamente coherente con su contexto. Cualquier fragmento que falle esa prueba, vuelve a leerlo de la imagen.
 Luego compara línea por línea con el original y corrige antes de emitir:
 - ¿Cada línea del original está en el cuerpo (no solo en pendientes)?
-- ¿Tienes exactamente un punto de nivel 1 por cada viñeta del original? Cuenta las viñetas de la hoja y cuenta tus puntos: si tienes más, juntaste mal continuaciones como puntos; corrígelo.
+- ${modo === 'fidelidad' ? '¿Cada línea de la hoja está en "lineas", en orden y una sola vez? Cuenta las viñetas de la hoja y las líneas con marca "vineta" o "asterisco": deben coincidir.' : '¿Tienes exactamente un punto de nivel 1 por cada viñeta del original? Cuenta las viñetas de la hoja y cuenta tus puntos: si tienes más, juntaste mal continuaciones como puntos; corrígelo.'}
 - ¿Cada verbo conserva el modo y el tiempo que escribió el autor?
-- ¿Cada flecha, llave y asterisco quedó como relación (subpunto, agrupación, negrita)?
+- ${modo === 'fidelidad' ? '¿Cada línea tiene la marca que se ve al inicio en la hoja (viñeta, flecha, asterisco o ninguna)?' : '¿Cada flecha, llave y asterisco quedó como relación (subpunto, agrupación, negrita)?'}
 - ¿Reemplazaste alguna palabra por otra que te pareció más lógica? Si el trazo no la respalda, vuelve a la del autor o márcala "palabra [¿o alternativa?]".
 
 SENTIDO — reglas que valen siempre, en cualquier modo
@@ -1741,7 +1742,27 @@ ${modo === 'fidelidad' ? `MODO: FIDELIDAD 1:1 — el input ya es un apunte conde
 - Preserva todo dato accionable: acuerdos, compromisos, responsables, plazos, cifras, nombres.
 - Descarta muletillas, saludos, repeticiones y ruido conversacional.`}
 
-FORMATO DE SALIDA — responde ÚNICAMENTE con este JSON, sin backticks ni texto alrededor:
+${modo === 'fidelidad' ? `FORMATO DE SALIDA (modo fidelidad) — responde ÚNICAMENTE con este JSON, sin backticks ni texto alrededor.
+En este modo NO decides la jerarquía: la arma la aplicación a partir de la MARCA con que empieza cada línea. Tu trabajo es transcribir cada línea lógica, en orden, e informar con qué marca empieza en la hoja.
+{
+  "titulo": "Título que escribió el autor",
+  "meta": "Fecha · contexto breve, o null",
+  "lineas": [
+    { "marca": "vineta", "texto": "Línea que empieza con viñeta (○, •, -) o número (①, 1))." },
+    { "marca": "flecha", "texto": "Línea que empieza con → o ⇒ (sin la flecha)." },
+    { "marca": "asterisco", "texto": "Línea que empieza con * (sin el asterisco)." },
+    { "marca": "ninguna", "texto": "Línea que empieza sin marca: lista de campos, 'Evidencia → fotos', una línea bajo una llave, etc." },
+    { "marca": "titulo", "texto": "Subtítulo de sección escrito por el autor (subrayado o aislado), si lo hay." }
+  ],
+  "pendientes": ["Compromiso explícito, con su responsable si el autor lo escribió"],
+  "cierre": null
+}
+Reglas de "lineas":
+- Una "línea lógica" es una idea con su marca. Si un renglón físico solo CONTINÚA la frase del renglón anterior (la frase se partió por falta de espacio), únelo a esa línea; no es una línea nueva.
+- "marca" es SOLO lo que se ve al inicio de la línea en la hoja. No la deduzcas por el contenido. Si no hay viñeta, flecha ni asterisco al inicio, es "ninguna".
+- No pongas el símbolo de la marca dentro de "texto". Las flechas que van en medio de una línea ("Evidencia → fotos") sí se quedan en el texto, escritas como →.
+- No omitas ni repitas líneas. El título y la fecha del encabezado van en "titulo" y "meta", no en "lineas".
+` : `FORMATO DE SALIDA — responde ÚNICAMENTE con este JSON, sin backticks ni texto alrededor:
 {
   "titulo": "Título de la nota",
   "meta": "Fecha · lugar · contexto breve, o null si no hay",
@@ -1756,9 +1777,10 @@ FORMATO DE SALIDA — responde ÚNICAMENTE con este JSON, sin backticks ni texto
   "pendientes": ["Compromiso explícito, con su responsable si el autor lo escribió"],
   "cierre": "Nota de cierre, próxima reunión o deadline, o null"
 }
-${title ? `\nTítulo sugerido por el usuario: ${title}` : ''}
+`}${title ? `\nTítulo sugerido por el usuario: ${title}` : ''}
 Reglas de "pendientes": es un índice adicional, no un lugar donde mover contenido; cada pendiente debe estar también en el cuerpo con las palabras del autor. Solo entran compromisos explícitos (alguien hará algo, o una acción escrita en infinitivo o imperativo como tarea). Una sugerencia, propuesta, condicional o pregunta NO es pendiente. Si el autor escribió el responsable, ponlo al inicio ("Cristián: enviar email…"); si no lo escribió, no lo inventes.
-Reglas del JSON: sin emojis en ningún campo. "subpuntos" vacío es []. "pendientes" vacío es []. "meta" y "cierre" pueden ser null. Un punto sin anidación lleva "subpuntos": [].`;
+Reglas del JSON: sin emojis en ningún campo. "pendientes" vacío es []. "meta" y "cierre" pueden ser null.${modo === 'fidelidad' ? '' : ' "subpuntos" vacío es []. Un punto sin anidación lleva "subpuntos": [].'}`;
+    const prompt = prompt0;
     if (isImage) {
       const imgMime = mime || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
       msgContent = [{ type: 'image', source: { type: 'base64', media_type: imgMime, data: base64 } }, { type: 'text', text: prompt }];
@@ -1775,6 +1797,33 @@ Reglas del JSON: sin emojis en ningún campo. "subpuntos" vacío es []. "pendien
     return renderNotaJSON(result);
   } catch(e) { toast(`❌ ${e.message}`, 'error'); throw e; } finally { hideLoading(); }
 }
+// Modo fidelidad: la jerarquía no la decide el modelo, sale de la marca con que empieza cada línea.
+// viñeta / asterisco → punto nuevo (asterisco en negrita); flecha / sin marca → subpunto del punto anterior;
+// título → sección nueva.
+function lineasASecciones(lineas) {
+  const limpiar = t => String(t || '').replace(/\s*(?:->|=>)\s*/g, ' → ').replace(/^\s*(?:[→⇒*•○]|-(?=\s))\s*/, '').trim();
+  const norm = m => { m = String(m || 'ninguna').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return ['vineta', 'asterisco', 'flecha', 'titulo'].includes(m) ? m : 'ninguna'; };
+  const secciones = [{ titulo: null, puntos: [] }];
+  let sec = secciones[0], hayVineta = false;   // ¿esta sección ya tiene un punto con viñeta/asterisco?
+  (lineas || []).forEach(l => {
+    const marca = norm(l && l.marca);
+    let texto = limpiar(l && l.texto);
+    if (!texto) return;
+    if (marca === 'titulo') { sec = { titulo: texto, puntos: [] }; secciones.push(sec); hayVineta = false; return; }
+    if (marca === 'vineta' || marca === 'asterisco') {
+      if (marca === 'asterisco') texto = `**${texto}**`;
+      sec.puntos.push({ texto, subpuntos: [] }); hayVineta = true;
+    } else if (marca === 'flecha' && sec.puntos.length) {
+      sec.puntos[sec.puntos.length - 1].subpuntos.push(texto);      // una flecha siempre cuelga del punto anterior
+    } else if (marca === 'ninguna' && hayVineta) {
+      sec.puntos[sec.puntos.length - 1].subpuntos.push(texto);      // sin marca, bajo una viñeta: desarrollo de esa viñeta
+    } else {
+      sec.puntos.push({ texto, subpuntos: [] });                    // texto sin viñetas (prosa) o antes de la primera viñeta
+    }
+  });
+  return secciones.filter(x => x.titulo || x.puntos.length);
+}
 function renderNotaJSON(raw) {
   let data;
   try {
@@ -1786,6 +1835,7 @@ function renderNotaJSON(raw) {
     // Fallback: si no vino JSON válido, devolver el texto tal cual para no perder el trabajo
     return raw.replace(/```json|```/g, '').trim();
   }
+  if (Array.isArray(data.lineas)) data.secciones = lineasASecciones(data.lineas);
   const out = [];
   if (data.titulo) out.push(`# ${data.titulo}`, '');
   if (data.meta) out.push(data.meta, '');
